@@ -1,0 +1,5 @@
+litellm.baseUrl=https://your-litellm-host/
+litellm.apiKey=your-api-key
+litellm.model=gpt-4o
+# Request timeout in seconds (default 300). Increase for slow reasoning models.
+litellm.timeoutSeconds=300
