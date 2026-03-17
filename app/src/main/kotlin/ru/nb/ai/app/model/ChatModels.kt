@@ -25,31 +25,20 @@ data class ChatRequest(
 )
 
 @Serializable
-data class ChatChunk(
-    val choices: List<ChunkChoice>,
+data class ChatStreamChunk(
+    val choices: List<StreamChoice>,
 )
 
 @Serializable
-data class ChunkChoice(
-    val delta: Delta,
+data class StreamChoice(
+    val delta: StreamDelta,
     @SerialName("finish_reason") val finishReason: String? = null,
 )
 
 @Serializable
-data class Delta(
+data class StreamDelta(
     val content: String? = null,
     @SerialName("reasoning_content") val reasoningContent: String? = null,
 )
 
 data class StreamToken(val text: String, val isThinking: Boolean = false)
-
-@Serializable
-data class ChatResponse(
-    val choices: List<Choice>,
-)
-
-@Serializable
-data class Choice(
-    val message: ChatMessage,
-    @SerialName("finish_reason") val finishReason: String? = null,
-)

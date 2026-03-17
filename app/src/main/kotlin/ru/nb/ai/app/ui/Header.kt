@@ -43,17 +43,6 @@ object Header {
         w.flush()
     }
 
-    fun printModelChanged(terminal: Terminal, model: String) {
-        val w = terminal.writer()
-        w.println()
-        w.println("$G╔$SEP╗$R")
-        w.println(row("${D}model switched to$R"))
-        w.println(row("$Y$BG  $model  $R"))
-        w.println("$G╚$SEP╝$R")
-        w.println()
-        w.flush()
-    }
-
     fun printHelp(terminal: Terminal) {
         val w = terminal.writer()
         w.println()
@@ -73,60 +62,43 @@ object Header {
         w.flush()
     }
 
-    fun printRequestMode(terminal: Terminal, enabled: Boolean) {
-        val w = terminal.writer()
-        w.println()
-        w.println("$G╔$SEP╗$R")
-        if (enabled) {
-            w.println(row("${D}request JSON output$R  $C${BG}on$R"))
-        } else {
-            w.println(row("${D}request JSON output$R  off"))
-        }
-        w.println("$G╚$SEP╝$R")
-        w.println()
-        w.flush()
-    }
+    fun printModelChanged(terminal: Terminal, model: String) = printBox(terminal,
+        "${D}model switched to$R",
+        "$Y$BG  $model  $R",
+    )
 
-    fun printThinkMode(terminal: Terminal, enabled: Boolean) {
-        val w = terminal.writer()
-        w.println()
-        w.println("$G╔$SEP╗$R")
-        if (enabled) {
-            w.println(row("${D}thinking tokens$R      $C${BG}on$R"))
-        } else {
-            w.println(row("${D}thinking tokens$R      off"))
-        }
-        w.println("$G╚$SEP╝$R")
-        w.println()
-        w.flush()
-    }
+    fun printRequestMode(terminal: Terminal, enabled: Boolean) = printBox(terminal,
+        if (enabled) "${D}request JSON output$R  $C${BG}on$R"
+        else         "${D}request JSON output$R  off",
+    )
+
+    fun printThinkMode(terminal: Terminal, enabled: Boolean) = printBox(terminal,
+        if (enabled) "${D}thinking tokens$R      $C${BG}on$R"
+        else         "${D}thinking tokens$R      off",
+    )
 
     fun printTemperature(terminal: Terminal, temperature: Double?) {
-        val w = terminal.writer()
-        w.println()
-        w.println("$G╔$SEP╗$R")
         if (temperature == null) {
-            w.println(row("${D}temperature reset to default$R"))
+            printBox(terminal, "${D}temperature reset to default$R")
         } else {
-            w.println(row("${D}temperature set to$R"))
-            w.println(row("$C$BG  $temperature  $R"))
+            printBox(terminal, "${D}temperature set to$R", "$C$BG  $temperature  $R")
         }
-        w.println("$G╚$SEP╝$R")
-        w.println()
-        w.flush()
     }
 
     fun printSystemPrompt(terminal: Terminal, prompt: String?) {
+        if (prompt == null) {
+            printBox(terminal, "${D}system prompt cleared$R")
+        } else {
+            val preview = if (prompt.length > INNER - 4) prompt.take(INNER - 7) + "..." else prompt
+            printBox(terminal, "${D}system prompt set$R", "$C$preview$R")
+        }
+    }
+
+    private fun printBox(terminal: Terminal, vararg lines: String) {
         val w = terminal.writer()
         w.println()
         w.println("$G╔$SEP╗$R")
-        if (prompt == null) {
-            w.println(row("${D}system prompt cleared$R"))
-        } else {
-            w.println(row("${D}system prompt set$R"))
-            val preview = if (prompt.length > INNER - 4) prompt.take(INNER - 7) + "..." else prompt
-            w.println(row("$C$preview$R"))
-        }
+        lines.forEach { w.println(row(it)) }
         w.println("$G╚$SEP╝$R")
         w.println()
         w.flush()
