@@ -4,11 +4,14 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import org.jline.reader.*
 import org.jline.reader.impl.history.DefaultHistory
+import org.jline.terminal.Attributes
 import org.jline.terminal.TerminalBuilder
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStyle
 import ru.nb.ai.app.model.ChatMessage
 import ru.nb.ai.app.model.ChatRequest
+import ru.nb.ai.app.model.StreamToken
+import ru.nb.ai.app.model.ThinkingConfig
 import ru.nb.ai.app.ui.Header
 import ru.nb.ai.app.ui.ModelSelector
 import ru.nb.ai.utils.ConfigLoader
@@ -49,6 +52,7 @@ fun main() {
     var model = DEFAULT_MODEL
     var temperature: Double? = null
     var showRequest = false
+    var showThinking = false
     val prettyJson = Json { prettyPrint = true; encodeDefaults = false }
 
     val terminal = TerminalBuilder.builder().system(true).build()
@@ -68,6 +72,7 @@ fun main() {
             Candidate("/system", "/system", null, "Set system prompt", null, null, false),
             Candidate("/t", "/t", null, "Set temperature 0.0–1.0", null, null, false),
             Candidate("/request", "/request", null, "Show request JSON (on/off)", null, null, false),
+            Candidate("/think", "/think", null, "Show thinking tokens (on/off)", null, null, false),
             Candidate("/exit", "/exit", null, "Exit application", null, null, true),
         ).filter { it.value().startsWith(word) }.forEach(candidates::add)
     }
@@ -118,6 +123,20 @@ fun main() {
                 }
             }
 
+            input.startsWith("/think", ignoreCase = true) -> {
+                val arg = input.drop(6).trim()
+                showThinking = when {
+                    arg.equals("on", ignoreCase = true) -> true
+                    arg.equals("off", ignoreCase = true) -> false
+                    else -> {
+                        terminal.writer().println("\u001B[31mUsage: /think on|off\u001B[0m\n")
+                        terminal.writer().flush()
+                        continue
+                    }
+                }
+                Header.printThinkMode(terminal, showThinking)
+            }
+
             input.startsWith("/t", ignoreCase = true) -> {
                 val arg = input.drop(2).trim()
                 if (arg.isEmpty() || arg.equals("reset", ignoreCase = true)) {
@@ -156,8 +175,11 @@ fun main() {
                     systemPrompt?.let { add(ChatMessage(role = "system", content = it)) }
                     addAll(history)
                 }
+                val thinkingBudget = if (showThinking && model.startsWith("claude", ignoreCase = true)) 10_000 else null
+
                 if (showRequest) {
-                    val requestBody = ChatRequest(model = model, messages = messages, temperature = temperature, stream = true)
+                    val requestBody = ChatRequest(model = model, messages = messages, temperature = temperature, stream = true,
+                        thinking = thinkingBudget?.let { ThinkingConfig(type = "enabled", budgetTokens = it) })
                     terminal.writer().println("\u001B[2m${prettyJson.encodeToString(requestBody)}\u001B[0m\n")
                     terminal.writer().flush()
                 }
@@ -167,13 +189,29 @@ fun main() {
 
                 val apiJob = CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        client.chatStream(messages).collect { token ->
-                            if (accumulated.isEmpty()) {
-                                terminal.writer().print("\u001B[36m<\u001B[0m ")
+                        var thinkingStarted = false
+                        var contentStarted = false
+                        client.chatStream(messages, thinkingBudget).collect { token ->
+                            when {
+                                token.isThinking && showThinking -> {
+                                    if (!thinkingStarted) {
+                                        terminal.writer().println("\u001B[2m[думает]\u001B[0m")
+                                        thinkingStarted = true
+                                    }
+                                    terminal.writer().print("\u001B[2m${token.text}\u001B[0m")
+                                    terminal.writer().flush()
+                                }
+                                !token.isThinking -> {
+                                    if (!contentStarted) {
+                                        if (thinkingStarted) terminal.writer().println()
+                                        terminal.writer().print("\u001B[36m<\u001B[0m ")
+                                        contentStarted = true
+                                    }
+                                    accumulated.append(token.text)
+                                    terminal.writer().print(token.text)
+                                    terminal.writer().flush()
+                                }
                             }
-                            accumulated.append(token)
-                            terminal.writer().print(token)
-                            terminal.writer().flush()
                         }
                         terminal.writer().println("\n")
                         terminal.writer().flush()
@@ -184,15 +222,24 @@ fun main() {
                 }
 
                 val stopThread = Thread {
+                    val savedAttrs = terminal.attributes
                     try {
+                        val rawAttrs = terminal.attributes
+                        rawAttrs.setLocalFlag(Attributes.LocalFlag.ICANON, false)
+                        rawAttrs.setLocalFlag(Attributes.LocalFlag.ECHO, false)
+                        terminal.setAttributes(rawAttrs)
                         while (!Thread.currentThread().isInterrupted) {
-                            val line = readlnOrNull()?.trim() ?: break
-                            if (line.equals("/stop", ignoreCase = true)) {
+                            val ch = terminal.reader().read(100L)
+                            if (ch == 's'.code || ch == 'S'.code) {
                                 apiJob.cancel()
                                 break
                             }
                         }
-                    } catch (_: InterruptedException) {}
+                    } catch (_: InterruptedException) {
+                    } catch (_: java.io.InterruptedIOException) {
+                    } finally {
+                        terminal.setAttributes(savedAttrs)
+                    }
                 }.also { it.isDaemon = true; it.start() }
 
                 runBlocking { apiJob.join() }

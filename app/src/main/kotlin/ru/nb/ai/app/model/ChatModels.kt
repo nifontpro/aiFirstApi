@@ -10,11 +10,18 @@ data class ChatMessage(
 )
 
 @Serializable
+data class ThinkingConfig(
+    val type: String,
+    @SerialName("budget_tokens") val budgetTokens: Int,
+)
+
+@Serializable
 data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
     val temperature: Double? = null,
     val stream: Boolean = false,
+    val thinking: ThinkingConfig? = null,
 )
 
 @Serializable
@@ -31,7 +38,10 @@ data class ChunkChoice(
 @Serializable
 data class Delta(
     val content: String? = null,
+    @SerialName("reasoning_content") val reasoningContent: String? = null,
 )
+
+data class StreamToken(val text: String, val isThinking: Boolean = false)
 
 @Serializable
 data class ChatResponse(

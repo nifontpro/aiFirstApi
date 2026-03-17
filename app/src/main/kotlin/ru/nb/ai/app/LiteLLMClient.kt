@@ -16,6 +16,8 @@ import kotlinx.serialization.json.Json
 import ru.nb.ai.app.model.ChatChunk
 import ru.nb.ai.app.model.ChatMessage
 import ru.nb.ai.app.model.ChatRequest
+import ru.nb.ai.app.model.StreamToken
+import ru.nb.ai.app.model.ThinkingConfig
 
 class LiteLLMClient(
     private val baseUrl: String,
@@ -24,7 +26,7 @@ class LiteLLMClient(
     private val temperature: Double? = null,
     private val timeoutSeconds: Long = 300,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -42,25 +44,30 @@ class LiteLLMClient(
         expectSuccess = false
     }
 
-    fun chatStream(messages: List<ChatMessage>): Flow<String> = flow {
-        val response = client.post("$baseUrl/chat/completions") {
-            setBody(ChatRequest(model = model, messages = messages, temperature = temperature, stream = true))
-        }
+    fun chatStream(messages: List<ChatMessage>, thinkingBudget: Int? = null): Flow<StreamToken> = flow {
+        val thinking = thinkingBudget?.let { ThinkingConfig(type = "enabled", budgetTokens = it) }
+        // Extended thinking требует temperature = 1
+        val effectiveTemperature = if (thinking != null) 1.0 else temperature
+        client.preparePost("$baseUrl/chat/completions") {
+            setBody(ChatRequest(model = model, messages = messages, temperature = effectiveTemperature, stream = true, thinking = thinking))
+        }.execute { response ->
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("HTTP ${response.status.value}: ${response.bodyAsText()}")
+            }
 
-        if (!response.status.isSuccess()) {
-            throw IllegalStateException("HTTP ${response.status.value}: ${response.bodyAsText()}")
-        }
-
-        val channel = response.bodyAsChannel()
-        while (!channel.isClosedForRead) {
-            val line = channel.readUTF8Line() ?: break
-            if (!line.startsWith("data: ")) continue
-            val data = line.removePrefix("data: ").trim()
-            if (data == "[DONE]") break
-            runCatching { json.decodeFromString<ChatChunk>(data) }
-                .onSuccess { chunk ->
-                    chunk.choices.firstOrNull()?.delta?.content?.let { emit(it) }
-                }
+            val channel = response.bodyAsChannel()
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                if (!line.startsWith("data: ")) continue
+                val data = line.removePrefix("data: ").trim()
+                if (data == "[DONE]") break
+                runCatching { json.decodeFromString<ChatChunk>(data) }
+                    .onSuccess { chunk ->
+                        val delta = chunk.choices.firstOrNull()?.delta ?: return@onSuccess
+                        delta.reasoningContent?.let { emit(StreamToken(it, isThinking = true)) }
+                        delta.content?.let { emit(StreamToken(it, isThinking = false)) }
+                    }
+            }
         }
     }
 

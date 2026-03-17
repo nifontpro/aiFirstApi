@@ -66,6 +66,7 @@ object Header {
         w.println(row("${C}/t$R <0.0–1.0>      set temperature"))
         w.println(row("${C}/t$R reset           reset temperature to default"))
         w.println(row("${C}/request$R on|off    show request JSON"))
+        w.println(row("${C}/think$R on|off      show thinking tokens"))
         w.println(row("${C}/exit$R              quit"))
         w.println("$G╚$SEP╝$R")
         w.println()
@@ -80,6 +81,20 @@ object Header {
             w.println(row("${D}request JSON output$R  $C${BG}on$R"))
         } else {
             w.println(row("${D}request JSON output$R  off"))
+        }
+        w.println("$G╚$SEP╝$R")
+        w.println()
+        w.flush()
+    }
+
+    fun printThinkMode(terminal: Terminal, enabled: Boolean) {
+        val w = terminal.writer()
+        w.println()
+        w.println("$G╔$SEP╗$R")
+        if (enabled) {
+            w.println(row("${D}thinking tokens$R      $C${BG}on$R"))
+        } else {
+            w.println(row("${D}thinking tokens$R      off"))
         }
         w.println("$G╚$SEP╝$R")
         w.println()
