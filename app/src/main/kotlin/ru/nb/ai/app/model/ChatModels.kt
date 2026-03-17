@@ -14,6 +14,23 @@ data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
     val temperature: Double? = null,
+    val stream: Boolean = false,
+)
+
+@Serializable
+data class ChatChunk(
+    val choices: List<ChunkChoice>,
+)
+
+@Serializable
+data class ChunkChoice(
+    val delta: Delta,
+    @SerialName("finish_reason") val finishReason: String? = null,
+)
+
+@Serializable
+data class Delta(
+    val content: String? = null,
 )
 
 @Serializable

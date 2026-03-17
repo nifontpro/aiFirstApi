@@ -9,10 +9,13 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import ru.nb.ai.app.model.ChatChunk
 import ru.nb.ai.app.model.ChatMessage
 import ru.nb.ai.app.model.ChatRequest
-import ru.nb.ai.app.model.ChatResponse
 
 class LiteLLMClient(
     private val baseUrl: String,
@@ -39,20 +42,26 @@ class LiteLLMClient(
         expectSuccess = false
     }
 
-    suspend fun chat(messages: List<ChatMessage>): String {
+    fun chatStream(messages: List<ChatMessage>): Flow<String> = flow {
         val response = client.post("$baseUrl/chat/completions") {
-            setBody(ChatRequest(model = model, messages = messages, temperature = temperature))
+            setBody(ChatRequest(model = model, messages = messages, temperature = temperature, stream = true))
         }
-        val rawBody = response.bodyAsText()
 
         if (!response.status.isSuccess()) {
-            throw IllegalStateException("HTTP ${response.status.value}: $rawBody")
+            throw IllegalStateException("HTTP ${response.status.value}: ${response.bodyAsText()}")
         }
 
-        val parsed = runCatching { json.decodeFromString<ChatResponse>(rawBody) }
-            .getOrElse { throw IllegalStateException("Unexpected response format:\n$rawBody", it) }
-
-        return parsed.choices.first().message.content
+        val channel = response.bodyAsChannel()
+        while (!channel.isClosedForRead) {
+            val line = channel.readUTF8Line() ?: break
+            if (!line.startsWith("data: ")) continue
+            val data = line.removePrefix("data: ").trim()
+            if (data == "[DONE]") break
+            runCatching { json.decodeFromString<ChatChunk>(data) }
+                .onSuccess { chunk ->
+                    chunk.choices.firstOrNull()?.delta?.content?.let { emit(it) }
+                }
+        }
     }
 
     fun close() = client.close()

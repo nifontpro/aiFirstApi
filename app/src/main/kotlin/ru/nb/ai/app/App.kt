@@ -1,6 +1,6 @@
 package ru.nb.ai.app
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import org.jline.reader.*
 import org.jline.reader.impl.history.DefaultHistory
@@ -152,22 +152,70 @@ fun main() {
 
             input.isNotEmpty() -> {
                 history.add(ChatMessage(role = "user", content = input))
-                try {
-                    val messages = buildList {
-                        systemPrompt?.let { add(ChatMessage(role = "system", content = it)) }
-                        addAll(history)
-                    }
-                    if (showRequest) {
-                        val requestBody = ChatRequest(model = model, messages = messages, temperature = temperature)
-                        terminal.writer().println("\u001B[2m${prettyJson.encodeToString(requestBody)}\u001B[0m\n")
+                val messages = buildList {
+                    systemPrompt?.let { add(ChatMessage(role = "system", content = it)) }
+                    addAll(history)
+                }
+                if (showRequest) {
+                    val requestBody = ChatRequest(model = model, messages = messages, temperature = temperature, stream = true)
+                    terminal.writer().println("\u001B[2m${prettyJson.encodeToString(requestBody)}\u001B[0m\n")
+                    terminal.writer().flush()
+                }
+
+                val accumulated = StringBuilder()
+                var apiException: Exception? = null
+
+                val apiJob = CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        client.chatStream(messages).collect { token ->
+                            if (accumulated.isEmpty()) {
+                                terminal.writer().print("\u001B[36m<\u001B[0m ")
+                            }
+                            accumulated.append(token)
+                            terminal.writer().print(token)
+                            terminal.writer().flush()
+                        }
+                        terminal.writer().println("\n")
                         terminal.writer().flush()
+                    } catch (_: CancellationException) {
+                    } catch (e: Exception) {
+                        apiException = e
                     }
-                    val reply = runBlocking { client.chat(messages) }
-                    history.add(ChatMessage(role = "assistant", content = reply))
-                    terminal.writer().println("\u001B[36m<\u001B[0m $reply\n")
-                } catch (e: Exception) {
-                    history.removeLast()
-                    terminal.writer().println("\u001B[31mError: ${e.message}\u001B[0m\n")
+                }
+
+                val stopThread = Thread {
+                    try {
+                        while (!Thread.currentThread().isInterrupted) {
+                            val line = readlnOrNull()?.trim() ?: break
+                            if (line.equals("/stop", ignoreCase = true)) {
+                                apiJob.cancel()
+                                break
+                            }
+                        }
+                    } catch (_: InterruptedException) {}
+                }.also { it.isDaemon = true; it.start() }
+
+                runBlocking { apiJob.join() }
+                stopThread.interrupt()
+
+                when {
+                    apiJob.isCancelled -> {
+                        val partial = accumulated.toString()
+                        if (partial.isNotEmpty()) {
+                            terminal.writer().println("\n\u001B[33m[отменено]\u001B[0m\n")
+                            history.add(ChatMessage(role = "assistant", content = partial))
+                        } else {
+                            terminal.writer().println("\u001B[33mЗапрос отменён.\u001B[0m\n")
+                            history.removeLast()
+                        }
+                    }
+                    apiException != null -> {
+                        if (accumulated.isEmpty()) history.removeLast()
+                        terminal.writer().println("\n\u001B[31mError: ${apiException.message}\u001B[0m\n")
+                    }
+                    else -> {
+                        history.add(ChatMessage(role = "assistant", content = accumulated.toString()))
+                    }
                 }
                 terminal.writer().flush()
             }
