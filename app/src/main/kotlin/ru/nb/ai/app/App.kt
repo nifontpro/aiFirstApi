@@ -77,11 +77,14 @@ fun main() {
         AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN)
     ).toAnsi(terminal)
 
+    val historyFile = java.nio.file.Paths.get(System.getProperty("user.home"), ".chat_history")
+
     val reader = LineReaderBuilder.builder()
         .terminal(terminal)
         .completer(completer)
         .history(DefaultHistory())
-        .option(org.jline.reader.LineReader.Option.DISABLE_EVENT_EXPANSION, true)
+        .variable(LineReader.HISTORY_FILE, historyFile)
+        .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
         .build()
 
     while (true) {
