@@ -18,6 +18,7 @@ class LiteLLMClient(
     private val baseUrl: String,
     private val apiKey: String,
     private val model: String,
+    private val temperature: Double? = null,
     private val timeoutSeconds: Long = 300,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -40,7 +41,7 @@ class LiteLLMClient(
 
     suspend fun chat(messages: List<ChatMessage>): String {
         val response = client.post("$baseUrl/chat/completions") {
-            setBody(ChatRequest(model = model, messages = messages))
+            setBody(ChatRequest(model = model, messages = messages, temperature = temperature))
         }
         val rawBody = response.bodyAsText()
 

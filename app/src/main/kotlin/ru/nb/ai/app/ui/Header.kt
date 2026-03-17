@@ -38,8 +38,6 @@ object Header {
         w.println("$G╠$SEP╣$R")
         w.println(row("${C}model $R ›  $Y$model$R"))
         w.println(row("${C}server$R ›  $D$server$R"))
-        w.println("$G╠$SEP╣$R")
-        w.println(row("${D}/models$R  switch model   ${D}/system$R  set role   ${D}/exit$R  quit"))
         w.println("$G╚$SEP╝$R")
         w.println()
         w.flush()
@@ -51,6 +49,53 @@ object Header {
         w.println("$G╔$SEP╗$R")
         w.println(row("${D}model switched to$R"))
         w.println(row("$Y$BG  $model  $R"))
+        w.println("$G╚$SEP╝$R")
+        w.println()
+        w.flush()
+    }
+
+    fun printHelp(terminal: Terminal) {
+        val w = terminal.writer()
+        w.println()
+        w.println("$G╔$SEP╗$R")
+        w.println(row("${Y}commands$R"))
+        w.println("$G╠$SEP╣$R")
+        w.println(row("${C}/models$R         switch model"))
+        w.println(row("${C}/system$R <text>  set system prompt"))
+        w.println(row("${C}/system$R clear   clear system prompt"))
+        w.println(row("${C}/t$R <0.0–1.0>      set temperature"))
+        w.println(row("${C}/t$R reset           reset temperature to default"))
+        w.println(row("${C}/request$R on|off    show request JSON"))
+        w.println(row("${C}/exit$R              quit"))
+        w.println("$G╚$SEP╝$R")
+        w.println()
+        w.flush()
+    }
+
+    fun printRequestMode(terminal: Terminal, enabled: Boolean) {
+        val w = terminal.writer()
+        w.println()
+        w.println("$G╔$SEP╗$R")
+        if (enabled) {
+            w.println(row("${D}request JSON output$R  $C${BG}on$R"))
+        } else {
+            w.println(row("${D}request JSON output$R  off"))
+        }
+        w.println("$G╚$SEP╝$R")
+        w.println()
+        w.flush()
+    }
+
+    fun printTemperature(terminal: Terminal, temperature: Double?) {
+        val w = terminal.writer()
+        w.println()
+        w.println("$G╔$SEP╗$R")
+        if (temperature == null) {
+            w.println(row("${D}temperature reset to default$R"))
+        } else {
+            w.println(row("${D}temperature set to$R"))
+            w.println(row("$C$BG  $temperature  $R"))
+        }
         w.println("$G╚$SEP╝$R")
         w.println()
         w.flush()
